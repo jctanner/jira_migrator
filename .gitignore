@@ -1,0 +1,9 @@
+venv
+chromedriver
+geckodriver
+.github*
+data
+settings.sh
+*.log
+*.gz
+__pycache__
