@@ -175,26 +175,32 @@ def main():
     #(rr, data) = ghc._geturl('https://api.github.com/repos/RedHatInsights/tower-analytics-backend')
 
     (irr, idata) = ghc._geturl('https://api.github.com/repos/RedHatInsights/tower-analytics-backend/issues')
+    bd = os.path.join(data_dir, 'RedHatInsights', 'tower-analytics-backend')
+    if not os.path.exists(bd):
+        os.makedirs(bd)
     for issue in idata:
         print(issue['number'])
-        fn = os.path.join(data_dir, f"aa_be_{issue['number']}_issue.json")
+        fn = os.path.join(bd, f"{issue['number']}_issue.json")
         with open(fn, 'w') as f:
             f.write(json.dumps(issue))
 
         (crr, cdata) = ghc._geturl(issue['comments_url'])
-        cfn = os.path.join(data_dir, f"aa_be_{issue['number']}_comments.json")
+        cfn = os.path.join(bd, f"{issue['number']}_comments.json")
         with open(cfn, 'w') as f:
             f.write(json.dumps(cdata))
 
     (irr, idata) = ghc._geturl('https://api.github.com/repos/RedHatInsights/tower-analytics-frontend/issues')
+    bd = os.path.join(data_dir, 'RedHatInsights', 'tower-analytics-frontend')
+    if not os.path.exists(bd):
+        os.makedirs(bd)
     for issue in idata:
         print(issue['number'])
-        fn = os.path.join(data_dir, f"aa_fe_{issue['number']}_issue.json")
+        fn = os.path.join(bd, f"{issue['number']}_issue.json")
         with open(fn, 'w') as f:
             f.write(json.dumps(issue))
 
         (crr, cdata) = ghc._geturl(issue['comments_url'])
-        cfn = os.path.join(data_dir, f"aa_fe_{issue['number']}_comments.json")
+        cfn = os.path.join(bd, f"{issue['number']}_comments.json")
         with open(cfn, 'w') as f:
             f.write(json.dumps(cdata))
 
