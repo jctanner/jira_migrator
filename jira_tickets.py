@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+"""
+jira_tickets.py - idempotently copy the issue data from github_tickets.py to issues.redhat.com
+
+The jira instance on issues.redhat.com does have an api, but it's shielded by sso and regular users
+can not generate tokens nor do advanced data import. This script works around all of that by using
+selenium to navigate through the pages and to input the data.
+"""
+
 import copy
 import glob
 import json
@@ -52,6 +60,11 @@ class JiraWrapper:
     jira_issues = None
     imap = None
 
+    private_repos = {
+        'https://api.github.com/repos/RedHatInsights/tower-analytics-backend': True,
+        'https://api.github.com/repos/RedHatInsights/tower-analytics-frontend': False
+    }
+
     def __init__(self, url, username, password):
         self.url = url
         self.username = username
@@ -83,7 +96,7 @@ class JiraWrapper:
         self.github_issues = []
 
         ddir = os.path.abspath('./data')
-        ifiles = glob.glob(f"{ddir}/aa_*_*_issue.json")
+        ifiles = glob.glob(f"{ddir}/RedHatInsights/tower-analytics-*/*_issue.json")
 
         ikeys = []
         for ifile in ifiles:
@@ -98,7 +111,7 @@ class JiraWrapper:
 
         ikeys = sorted(ikeys, key=lambda x: x[0])
         self.github_issues = ikeys[:]
-        #import epdb; epdb.st()
+
 
     def connect(self):
 
@@ -157,148 +170,78 @@ class JiraWrapper:
 
     def scrape_jira_issues(self, github_issue_to_find=None):
 
-        self.jira_issues = []
+        def _scrape():
+            self.jira_issues = []
+            self.driver.get('https://issues.redhat.com/rest/api/2/search?jql=project=AA&maxResults=1000')
+            data = self.driver.find_element_by_tag_name('pre').text
+            jdata = json.loads(data)
+            issues = jdata['issues']
 
-        self.driver.get('https://issues.redhat.com/rest/api/2/search?jql=project=AA&maxResults=1000')
-        data = self.driver.find_element_by_tag_name('pre').text
-        jdata = json.loads(data)
-        issues = jdata['issues']
+            for ji in issues:
+                idata = {
+                    'number': ji['key'],
+                    'url': 'https://issues.redhat.com/projects/AA/issues/' + ji['key'],
+                    'description': ji['fields']['description'] or ''
+                }
+                self.jira_issues.append(idata)
 
-        for ji in issues:
-            idata = {
-                'number': ji['key'],
-                'url': 'https://issues.redhat.com/projects/AA/issues/' + ji['key'],
-                'description': ji['fields']['description'] or ''
-            }
-            self.jira_issues.append(idata)
+        _scrape()
+        if github_issue_to_find:
+            matches = [x for x in self.jira_issues if github_issue_to_find in x]
+            while not matches:
+                logger.info(f'waiting for {github_issue_to_find} to appaer')
+                _scrape()
+                matches = [x for x in self.jira_issues if github_issue_to_find in x['description']]
+                if not matches:
+                    time.sleep(2)
 
-        #import epdb; epdb.st()
         logger.info('opening ' + self.iurl)
         self.driver.get(self.iurl)
         self.wait_for_element(classname="simple-issue-list")
-        return 
-
-        self.wait_for_element(classname="simple-issue-list")
-
-        try:
-            ilist = self.driver.find_element_by_class_name('simple-issue-list')
-        except Exception as e:
-            ilist = self.driver.find_element_by_class_name('simple-issue-list')
-
-        olist = ilist.find_element_by_class_name('issue-list')
-        li_issues = olist.find_elements_by_tag_name('li')
-        for lix,li in enumerate(li_issues):
-            logger.info('click issue index ' + str(lix))
-
-            li.click()
-            time.sleep(2)
-            self.wait_for_element(id='details-module')
-
-            #import epdb; epdb.st()
-
-            # ID
-            iid = self.driver.find_element_by_class_name('issue-link').text
-            href = self.driver.find_element_by_class_name('issue-link').get_attribute('href')
-            logger.info(f'viewing {iid}')
-
-            # DETAILS
-            dmap = {}
-            details = self.driver.find_element_by_id('details-module')
-            d_lis = details.find_elements_by_tag_name('li')
-            for dli in d_lis:
-                bits = dli.text
-                bits = bits.split(':', 1)
-                bits = [x.strip() for x in bits if x.strip()]
-                logger.info(bits)
-                if bits:
-                    if len(bits) == 2:
-                        dmap[bits[0]] = bits[1]
-                    elif len(bits) == 1:
-                        dmap[bits[0]] = None
-            
-            # PEOPLE
-            pmap = {}
-            people = self.driver.find_element_by_id('peopledetails')
-            p_lis = people.find_elements_by_tag_name('dl')
-            for pli in p_lis:
-                bits = pli.text
-                bits = bits.split(':', 1)
-                bits = [x.strip() for x in bits if x.strip()]
-                logger.info(bits)
-                if bits:
-                    if len(bits) == 2:
-                        pmap[bits[0]] = bits[1]
-                    elif len(bits) == 1:
-                        pmap[bits[0]] = None
-
-            # DESCRIPTION
-            description = self.driver.find_element_by_id('descriptionmodule').find_element_by_class_name('mod-content').text
-
-            # COMMENTS
-            activity = self.driver.find_element_by_id('activitymodule')
-            comment_divs = activity.find_elements_by_class_name('activity-comment')
-            comments = []
-            for idc,cd in enumerate(comment_divs):
-                created_by = cd.find_element_by_class_name('user-hover').text
-                ts = cd.find_element_by_class_name('livestamp')
-                dt = ts.get_attribute('datetime')
-
-                private = False
-                try:
-                    cd.find_element_by_class_name('aui-iconfont-locked')
-                    private = True
-                except Exception as e:
-                    pass
-
-                body = cd.find_element_by_class_name('action-body').text
-
-                comment = {
-                    'id': idc,
-                    'private': private,
-                    'time': dt,
-                    'body': body
-                }
-                comments.append(comment)
-            
-            idata = {
-                'number': iid,
-                'url': href,
-                'details': copy.deepcopy(dmap),
-                'people': copy.deepcopy(pmap),
-                'description': description,
-                'comments': [copy.deepcopy(x) for x in comments]
-            }
-
-            self.jira_issues.append(idata)            
-        
-        #import epdb; epdb.st()
 
     def create_issues(self):
         logger.info('opening ' + self.iurl)
         self.driver.get(self.iurl)
         self.wait_for_element(classname="simple-issue-list")
 
-        for gi in self.github_issues[:3]:
+        for gi in self.github_issues:
             logger.info(gi)
             with open(gi[-1], 'r') as f:
                 idata = json.loads(f.read())
+
+            lnames = [x['name'].lower() for x in idata['labels']]
+            if not 'jira' in lnames:
+                continue
+            if not 'epic' in lnames:
+                continue
+
+            itype = 'Bug'
+            if 'epic' in lnames:
+                itype = 'Epic'
+            elif 'feature' in lnames:
+                itype = 'Feature'
             
             matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
             if not matches:
-                self.create_issue(idata)
+                self.create_issue(idata, itype=itype, private=self.private_repos.get(idata['repository_url']))
                 self.scrape_jira_issues(github_issue_to_find=idata['html_url'])
+                #matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
+                #import epdb; epdb.st()
+                #assert matches, "The newly created issue was not found"
                 matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
+                assert matches, "The newly created issue was not found"
             
             cfile = gi[-1].replace('_issue', '_comments')
             with open(cfile, 'r') as f:
                 cdata = json.loads(f.read())
             if cdata:
-                self.create_comments(matches[0], cdata)
+                self.create_comments(matches[0], cdata, private=self.private_repos.get(idata['repository_url']))
             
             import epdb; epdb.st()
 
-    def create_issue(self, issue_data):
+    def create_issue(self, issue_data, private=False, itype='Bug'):
         # find and click the new issue button ...
+        logger.info('click new issue')
         new_button = None
         buttons = self.driver.find_elements_by_tag_name('button')
         for button in buttons:
@@ -308,6 +251,7 @@ class JiraWrapper:
         new_button.click()
 
         # open the full modal ..
+        logger.info('opening full create modal ...')
         expand_button = None
         buttons = self.driver.find_elements_by_tag_name('button')
         for button in buttons:
@@ -317,11 +261,12 @@ class JiraWrapper:
         if expand_button:
             expand_button.click()
         
-
         # find description box and fill it in ...
+        logger.info('wait for modal ...')
         new_description = issue_data['html_url'] + '\n\n' + issue_data['body']
         self.wait_for_element(classname='description-wiki-edit')
 
+        logger.info('brute force filling in the description ...')
         count = 0
         while True:
             highlight(self.driver, self.driver.find_element_by_id('description-wiki-edit'))
@@ -340,26 +285,30 @@ class JiraWrapper:
                 break
             time.sleep(count)
 
-        # set the issue type to bug ...
+        # set the issue type ...
+        logger.info('set the issue type')
         self.wait_for_element(id='issuetype-single-select')
         for x in range(0, 10):
             self.driver.find_element_by_id('issuetype-single-select').find_element_by_tag_name('input').send_keys(Keys.BACKSPACE)
-        self.driver.find_element_by_id('issuetype-single-select').find_element_by_tag_name('input').send_keys('Bug')
+        self.driver.find_element_by_id('issuetype-single-select').find_element_by_tag_name('input').send_keys(itype)
         self.driver.find_element_by_id('issuetype-single-select').find_element_by_tag_name('input').send_keys(Keys.TAB)
         #time.sleep(2)
         time.sleep(1)
 
         # set the security level ...
-        sselect = self.driver.find_element_by_id('security')
-        sopts = self.driver.find_elements_by_tag_name('option')
-        for sopt in sopts:
-            if 'Red Hat Internal' in sopt.text:
-                sopt.click()
-                break
-        #time.sleep(2)
-        time.sleep(1)
+        if private:
+            logger.info('set security level')
+            sselect = self.driver.find_element_by_id('security')
+            sopts = self.driver.find_elements_by_tag_name('option')
+            for sopt in sopts:
+                if 'Red Hat Internal' in sopt.text:
+                    sopt.click()
+                    break
+            #time.sleep(2)
+            time.sleep(1)
         
         # set the component ...
+        logger.info('set components')
         cdiv = self.driver.find_element_by_id('components-multi-select')
         for x in range(0, 10):
             cdiv.find_element_by_tag_name('textarea').send_keys(Keys.BACKSPACE)
@@ -376,17 +325,29 @@ class JiraWrapper:
         if 'backend' in issue_data['url']:
             new_summary = 'API-' + str(issue_data['number']) + ': ' + new_summary
         elif 'frontend' in issue_data['url']:
-            new_summary = 'UI-' + str(issue_data['number']) + ': ' + new_summary            
+            new_summary = 'UI-' + str(issue_data['number']) + ': ' + new_summary
+  
+        logger.info('fill in summary')
         self.driver.find_element_by_id('summary').send_keys(new_summary)
+        if itype == 'Epic':
+            logger.info('fill in epic name')
+            field_groups = self.driver.find_elements_by_class_name('field-group')
+            field_groups = [x for x in field_groups if 'Epic Name' in x.text]
+            epic_field = field_groups[0]
+            #epic_field.send_keys(new_summary)
+            epic_field.find_element_by_tag_name('input').send_keys(new_summary)
 
         #import epdb; epdb.st()
+        logger.info('click create')
         try:
             self.driver.find_element_by_id('create-issue-submit').click()
         except Exception as e:
             logger.error(str(e))
 
+        #import epdb; epdb.st()
 
-    def create_comments(self, ticket, cdata):
+
+    def create_comments(self, ticket, cdata, private=False):
         # open the issue ..
         # iurl = 'https://issues.redhat.com/projects/AA/issues/AA-1?filter=allopenissues'
         self.driver.get(ticket['url'])
@@ -409,6 +370,8 @@ class JiraWrapper:
             body += cd['body']
             
             logger.info('click new comment button ...')
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1)
             self.driver.find_element_by_id('footer-comment-button').click()
             time.sleep(1)
 
@@ -419,18 +382,22 @@ class JiraWrapper:
             self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').send_keys(body)
 
             # change the visibility ...
-            logger.info('expand security options ...')
-            self.driver.find_element_by_class_name('security-level').find_element_by_id('commentLevel-multi-select').click()
-            logger.info('click redhat ...')
-            #self.driver.find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
-            #self.driver.find_element_by_class_name('security-level').find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
-            self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.DOWN * 6)
-            self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.ENTER)
-
+            if private:
+                logger.info('expand security options ...')
+                self.driver.find_element_by_class_name('security-level').find_element_by_id('commentLevel-multi-select').click()
+                logger.info('click redhat ...')
+                #self.driver.find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
+                #self.driver.find_element_by_class_name('security-level').find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
+                self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.DOWN * 6)
+                self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.ENTER)
+                time.sleep(1)
 
             # click "add"
-            self.driver.find_element_by_id('issue-comment-add-submit').click()
-            #import epdb; epdb.st()
+            try:
+                self.driver.find_element_by_id('issue-comment-add-submit').click()
+            except Exception as e:
+                logger.error(str(e))
+                import epdb; epdb.st()
 
         #import epdb; epdb.st()
 
