@@ -1,0 +1,5 @@
+logzero==1.6.3
+requests==2.25.0
+requests-cache==0.5.2
+selenium==3.141.0
+timeout-decorator==0.5.0
