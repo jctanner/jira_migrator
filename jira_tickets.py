@@ -224,8 +224,9 @@ class JiraWrapper:
                 continue
             #if 'epic' not in lnames:
             #    continue
-            if 'feature' not in lnames and 'enhanceement' not in lnames:
-                continue
+            
+            #if 'feature' not in lnames and 'enhanceement' not in lnames:
+            #    continue
 
             total += 1
             if total >= 5:
