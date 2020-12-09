@@ -56,6 +56,8 @@ class JiraWrapper:
     chrome_driver = os.path.abspath('./chromedriver')
     gecko_driver = os.path.abspath('./geckodriver')
     iurl = 'https://issues.redhat.com/projects/AA/issues/AA-1?filter=allopenissues'
+
+    login_map = None
     github_issues = None
     jira_issues = None
     imap = None
@@ -76,6 +78,7 @@ class JiraWrapper:
         self.driver = None
 
         self.load_imap()
+        self.load_login_map()
         self.load_github_data()
 
         self.connect()
@@ -94,6 +97,13 @@ class JiraWrapper:
         fn = '.jiramap.json'
         with open(fn, 'w') as f:
             f.write(json.dumps(self.imap))
+
+    def load_login_map(self):
+        self.login_map = {}
+        fn = 'login_map.json'
+        if os.path.exists(fn):
+            with open(fn, 'r') as f:
+                self.login_map = json.loads(f.read())
 
     def load_github_data(self):
 
@@ -229,7 +239,7 @@ class JiraWrapper:
             #    continue
 
             total += 1
-            if total >= 5:
+            if total >= 10:
                 break
 
             itype = 'Bug'
@@ -254,7 +264,7 @@ class JiraWrapper:
             if cdata:
                 self.create_comments(matches[0], cdata, private=self.private_repos.get(idata['repository_url']))
             
-            #import epdb; epdb.st()
+            import epdb; epdb.st()
 
     def create_issue(self, issue_data, private=False, itype='Bug'):
         self.driver.get(self.iurl)
@@ -363,6 +373,17 @@ class JiraWrapper:
             epic_field = field_groups[0]
             #epic_field.send_keys(new_summary)
             epic_field.find_element_by_tag_name('input').send_keys(new_summary)
+
+
+        # set the reporter ...
+        rname = self.login_map.get(issue_data['user']['login'])
+        if rname:
+            self.driver.find_element_by_id('reporter-field').send_keys(Keys.BACKSPACE * 20)
+            self.driver.find_element_by_id('reporter-field').send_keys(rname + Keys.TAB)
+            time.sleep(1)
+            self.driver.find_element_by_id('reporter-field').send_keys(Keys.TAB)
+
+        #import epdb; epdb.st()
 
         #import epdb; epdb.st()
         logger.info('click create')
