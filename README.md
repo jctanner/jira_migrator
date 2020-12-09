@@ -13,4 +13,6 @@ Migrate issues from github to issues.redhat.com via selenium
 7. export JIRA_USERNAME=<YOUR_USERNAME>
 8. export JIRA_PASSWORD=<YOUR_PASSWORD>
 9. python github_tickets.py
-10. python jira_tickets.py
+10. python map_logins.py
+11. vim login_map.json
+12. python jira_tickets.py
