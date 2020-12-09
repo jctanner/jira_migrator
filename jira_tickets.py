@@ -66,6 +66,10 @@ class JiraWrapper:
     }
 
     def __init__(self, url, username, password):
+
+        if not username or not password:
+            raise Exception('The username and password must be set!')
+
         self.url = url
         self.username = username
         self.password = password
@@ -117,8 +121,8 @@ class JiraWrapper:
 
         logger.info('open page ...')
         #self.driver = webdriver.Chrome(self.chrome_driver)
-        profile = webdriver.FirefoxProfile()
-        profile.set_preference("devtools.jsonview.enabled", False)
+        #profile = webdriver.FirefoxProfile()
+        #profile.set_preference("devtools.jsonview.enabled", False)
         options = webdriver.FirefoxOptions()
         options.set_preference("devtools.jsonview.enabled", False)
         self.driver = webdriver.Firefox(executable_path=self.gecko_driver, options=options)
@@ -128,7 +132,7 @@ class JiraWrapper:
         logger.info('click login ...')
         login_url = self.driver.find_element_by_class_name('login-link')
         login_url.click()
-        time.sleep(5)
+        #time.sleep(5)
 
         # enter username
         logger.info('enter username ...')
@@ -204,7 +208,7 @@ class JiraWrapper:
         self.driver.get(self.iurl)
         self.wait_for_element(classname="simple-issue-list")
 
-        for gi in self.github_issues:
+        for gi in self.github_issues[:10]:
             logger.info(gi)
             with open(gi[-1], 'r') as f:
                 idata = json.loads(f.read())
@@ -212,8 +216,8 @@ class JiraWrapper:
             lnames = [x['name'].lower() for x in idata['labels']]
             if not 'jira' in lnames:
                 continue
-            if not 'epic' in lnames:
-                continue
+            #if not 'epic' in lnames:
+            #    continue
 
             itype = 'Bug'
             if 'epic' in lnames:
@@ -237,9 +241,12 @@ class JiraWrapper:
             if cdata:
                 self.create_comments(matches[0], cdata, private=self.private_repos.get(idata['repository_url']))
             
-            import epdb; epdb.st()
+            #import epdb; epdb.st()
 
     def create_issue(self, issue_data, private=False, itype='Bug'):
+        self.driver.get(self.iurl)
+        self.wait_for_element(classname="simple-issue-list")
+
         # find and click the new issue button ...
         logger.info('click new issue')
         new_button = None
@@ -269,8 +276,14 @@ class JiraWrapper:
         logger.info('brute force filling in the description ...')
         count = 0
         while True:
-            highlight(self.driver, self.driver.find_element_by_id('description-wiki-edit'))
-            highlight(self.driver, self.driver.find_element_by_id('description-wiki-edit').find_element_by_tag_name('textarea'))
+            '''
+            try:
+                highlight(self.driver, self.driver.find_element_by_id('description-wiki-edit'))
+                highlight(self.driver, self.driver.find_element_by_id('description-wiki-edit').find_element_by_tag_name('textarea'))
+            except Exception as e:
+                logger.error(str(e))
+            '''
+
             try:
                 delete_element(self.driver, self.driver.find_element_by_class_name('rte-container'))
                 ta = self.driver.find_element_by_id('description-wiki-edit').find_element_by_tag_name('textarea')
@@ -280,6 +293,7 @@ class JiraWrapper:
                 break
             except Exception as e:
                 logger.error(str(e))
+
             count += 1
             if count >= 5:
                 break
@@ -370,16 +384,33 @@ class JiraWrapper:
             body += cd['body']
             
             logger.info('click new comment button ...')
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            #self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+            # scroll ...
+            panel = self.driver.find_element_by_class_name('detail-panel')
+            self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)
             time.sleep(1)
-            self.driver.find_element_by_id('footer-comment-button').click()
+
+            try:
+                self.driver.find_element_by_id('footer-comment-button').click()
+            except Exception as e:
+                logger.error(str(e))
+                import epdb; epdb.st()
+            
+            # scroll ...
+            panel = self.driver.find_element_by_class_name('detail-panel')
+            self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)                
             time.sleep(1)
 
             logger.info('fill in commment body ...')
             self.wait_for_element(id='comment-wiki-edit')
 
-            self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').click()
-            self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').send_keys(body)
+            try:
+                self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').click()
+                self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').send_keys(body)
+            except Exception as e:
+                logger.error(e)
+                import epdb; epdb.st()
 
             # change the visibility ...
             if private:
