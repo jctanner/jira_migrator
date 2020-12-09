@@ -208,21 +208,33 @@ class JiraWrapper:
         self.driver.get(self.iurl)
         self.wait_for_element(classname="simple-issue-list")
 
-        for gi in self.github_issues[:10]:
+        total = 0
+        for gi in self.github_issues:
+
             logger.info(gi)
             with open(gi[-1], 'r') as f:
                 idata = json.loads(f.read())
 
             lnames = [x['name'].lower() for x in idata['labels']]
-            if not 'jira' in lnames:
+
+            #if idata['number'] == 109:
+            #    import epdb; epdb.st()
+
+            if 'jira' not in lnames:
                 continue
-            #if not 'epic' in lnames:
+            #if 'epic' not in lnames:
             #    continue
+            if 'feature' not in lnames and 'enhanceement' not in lnames:
+                continue
+
+            total += 1
+            if total >= 5:
+                break
 
             itype = 'Bug'
             if 'epic' in lnames:
                 itype = 'Epic'
-            elif 'feature' in lnames:
+            elif 'feature' in lnames or 'enhancement' in lnames:
                 itype = 'Feature'
             
             matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
