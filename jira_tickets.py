@@ -19,6 +19,16 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+from webdriver_manager.firefox import GeckoDriverManager
+
+
+class CommentFailedRetryException(Exception):
+    pass
+
 
 def highlight(driver, element):
     """Highlights (blinks) a Selenium Webdriver element"""
@@ -53,8 +63,8 @@ document.getElementsByTagName({tag}).value = "100";
 
 
 class JiraWrapper:
-    chrome_driver = os.path.abspath('./chromedriver')
-    gecko_driver = os.path.abspath('./geckodriver')
+    #chrome_driver = os.path.abspath('./chromedriver')
+    #gecko_driver = os.path.abspath('./geckodriver')
     iurl = 'https://issues.redhat.com/projects/AA/issues/AA-1?filter=allopenissues'
 
     login_map = None
@@ -135,14 +145,35 @@ class JiraWrapper:
         #profile.set_preference("devtools.jsonview.enabled", False)
         options = webdriver.FirefoxOptions()
         options.set_preference("devtools.jsonview.enabled", False)
-        self.driver = webdriver.Firefox(executable_path=self.gecko_driver, options=options)
+
+        # create the driver with driver manager ...
+        self.driver = webdriver.Firefox(
+            executable_path=GeckoDriverManager().install(),
+            options=options
+        )
+
         self.driver.get(self.url)
+
+        '''
+        #wait = WebDriverWait(self.driver, 1)
+        #wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'login-link')))
+        WebDriverWait(self.driver, 10).until(
+            EC.visibility_of_element_located((By.CLASS_NAME, 'login-link'))
+        )
+
+        import epdb; epbd.st()
 
         # click login
         logger.info('click login ...')
         login_url = self.driver.find_element_by_class_name('login-link')
         login_url.click()
         #time.sleep(5)
+        '''
+
+        # wait for username ...
+        WebDriverWait(self.driver, 10).until(
+            EC.visibility_of_element_located((By.ID, 'username'))
+        )
 
         # enter username
         logger.info('enter username ...')
@@ -194,9 +225,18 @@ class JiraWrapper:
             for ji in issues:
                 idata = {
                     'number': ji['key'],
+                    'api_url': ji['self'],
                     'url': 'https://issues.redhat.com/projects/AA/issues/' + ji['key'],
                     'description': ji['fields']['description'] or ''
                 }
+
+                '''
+                self.driver.get(ji['self'])
+                idata = self.driver.find_element_by_tag_name('pre').text
+                ijdata = json.loads(data)
+                import epdb; epdb.st()
+                '''
+
                 self.jira_issues.append(idata)
 
         _scrape()
@@ -213,6 +253,14 @@ class JiraWrapper:
         self.driver.get(self.iurl)
         self.wait_for_element(classname="simple-issue-list")
 
+
+    def get_comments_for_issue(self, api_url):
+        self.driver.get(api_url)
+        data = self.driver.find_element_by_tag_name('pre').text
+        jdata = json.loads(data)
+        comments = jdata['fields']['comment']['comments']
+        return comments
+
     def create_issues(self):
         logger.info('opening ' + self.iurl)
         self.driver.get(self.iurl)
@@ -227,20 +275,18 @@ class JiraWrapper:
 
             lnames = [x['name'].lower() for x in idata['labels']]
 
-            #if idata['number'] == 109:
-            #    import epdb; epdb.st()
-
             if 'jira' not in lnames:
                 continue
-            #if 'epic' not in lnames:
-            #    continue
-            
-            #if 'feature' not in lnames and 'enhanceement' not in lnames:
-            #    continue
 
+            lockfile = gi[-1] + '.lock'
+            if os.path.exists(lockfile):
+                continue
+
+            '''
             total += 1
             if total >= 10:
                 break
+            '''
 
             itype = 'Bug'
             if 'epic' in lnames:
@@ -250,7 +296,12 @@ class JiraWrapper:
             
             matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
             if not matches:
-                self.create_issue(idata, itype=itype, private=self.private_repos.get(idata['repository_url']))
+
+                self.create_issue(
+                    idata,
+                    itype=itype,
+                    private=self.private_repos.get(idata['repository_url'])
+                )
                 self.scrape_jira_issues(github_issue_to_find=idata['html_url'])
                 #matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
                 #import epdb; epdb.st()
@@ -262,26 +313,60 @@ class JiraWrapper:
             with open(cfile, 'r') as f:
                 cdata = json.loads(f.read())
             if cdata:
-                self.create_comments(matches[0], cdata, private=self.private_repos.get(idata['repository_url']))
-            
-            import epdb; epdb.st()
+                comments_success = False
+                for retry in range(0, 10):
+                    try:
+                        self.create_comments(
+                            matches[0],
+                            cdata,
+                            private=self.private_repos.get(idata['repository_url'])
+                        )
+                        comments_success = True
+                        break
+                    except CommentFailedRetryException as e:
+                        print(e)
+                        time.sleep(1)
+                if not comments_success:
+                    logger.error('creating comments failed ...')
+                    import epdb; epdb.st()
+               
+            # stop after each issue ...
+            with open(lockfile, 'w') as f:
+                f.write('')
+            #import epdb; epdb.st()
+            time.sleep(2)
 
     def create_issue(self, issue_data, private=False, itype='Bug'):
         self.driver.get(self.iurl)
         self.wait_for_element(classname="simple-issue-list")
 
+        """
         # find and click the new issue button ...
         logger.info('click new issue')
-        new_button = None
-        buttons = self.driver.find_elements_by_tag_name('button')
-        for button in buttons:
-            if 'Create issue' in button.text:
-                new_button = button
+        clicked = False
+        for x in range(0, 5):
+            try:
+                new_button = None
+                buttons = self.driver.find_elements_by_tag_name('button')
+                for button in buttons:
+                    if 'Create issue' in button.text:
+                        new_button = button
+                        break
+                new_button.click()
+                clicked = True
+            except Exception as e:
+                logger.error(e)
+
+            if clicked:
                 break
-        new_button.click()
+
+        if not clicked:
+            logger.error('could not click new issue')
+            import epdb; epdb.st()
 
         # open the full modal ..
         logger.info('opening full create modal ...')
+        '''
         expand_button = None
         buttons = self.driver.find_elements_by_tag_name('button')
         for button in buttons:
@@ -290,6 +375,17 @@ class JiraWrapper:
                 break
         if expand_button:
             expand_button.click()
+        '''
+        self.driver.find_element_by_class_name('iic-widget__more').click()
+        time.sleep(1)
+        """
+
+        # wait for the create button ...
+        WebDriverWait(self.driver, 10).until(
+            EC.visibility_of_element_located((By.ID, 'create_link'))
+        )
+        self.driver.find_element_by_id('create_link').click()
+        #import epdb; epdb.st()
         
         # find description box and fill it in ...
         logger.info('wait for modal ...')
@@ -396,6 +492,10 @@ class JiraWrapper:
 
 
     def create_comments(self, ticket, cdata, private=False):
+
+        existing = self.get_comments_for_issue(ticket['api_url'])
+        joined_bodies = '\n'.join([x['body'] for x in existing])
+
         # open the issue ..
         # iurl = 'https://issues.redhat.com/projects/AA/issues/AA-1?filter=allopenissues'
         self.driver.get(ticket['url'])
@@ -403,11 +503,24 @@ class JiraWrapper:
 
         for cd in cdata:
 
+            '''
+            # expand all comments ...
+            try:
+                self.driver.find_element_by_class_name('collapsed-comments').click()
+                time.sleep(2)
+            except Exception as e:
+                logger.error(e)
+
             # check if comment alreadyt exists ...
             cblocks = self.driver.find_elements_by_class_name('activity-comment')
             bodies = [x.text for x in cblocks]
             bmatches = [x for x in bodies if cd['html_url'] in x]
             if bmatches:
+                continue
+            '''
+
+            # skip if already added ...
+            if cd['html_url'] in joined_bodies:
                 continue
 
             logger.info('adding comment ' + cd['html_url'])
@@ -415,8 +528,23 @@ class JiraWrapper:
 
             body = cd['html_url'] + '\n'
             body +=  cd['created_at'] + ' by ' + '@' + cd['user']['login'] + '\n\n'
-            body += cd['body']
-            
+            body += cd['body'] + ' '
+
+            # @trahman73 is problematic for the javascript ...
+            breakers = [
+                'benthomasson',
+                'chambridge',
+                'trahman73',
+                'wenottingham',
+                'log_stream',
+                'ladas',
+                'Ladas'
+            ]
+            for breaker in breakers:
+                body = body.replace('@' + breaker, breaker)
+
+
+            '''
             logger.info('click new comment button ...')
             #self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
@@ -425,10 +553,20 @@ class JiraWrapper:
             self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)
             time.sleep(1)
 
-            try:
-                self.driver.find_element_by_id('footer-comment-button').click()
-            except Exception as e:
-                logger.error(str(e))
+            # clicking on new comment is finicky ...
+            clicked = False
+            for retry in range(0, 5):
+                try:
+                    self.driver.find_element_by_id('footer-comment-button').click()
+                    clicked = True
+                    break
+                except Exception as e:
+                    logger.error(str(e))
+                    #import epdb; epdb.st()
+                time.sleep(1)
+
+            if not clicked:
+                print('could not click "new comment" ...')
                 import epdb; epdb.st()
             
             # scroll ...
@@ -437,32 +575,129 @@ class JiraWrapper:
             time.sleep(1)
 
             logger.info('fill in commment body ...')
-            self.wait_for_element(id='comment-wiki-edit')
+            #self.wait_for_element(id='comment-wiki-edit')
+            WebDriverWait(self.driver, 10).until(
+                EC.visibility_of_element_located((By.ID, 'comment-wiki-edit'))
+            )
 
-            try:
-                self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').click()
-                self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').send_keys(body)
-            except Exception as e:
-                logger.error(e)
+            # scroll ...
+            panel = self.driver.find_element_by_class_name('detail-panel')
+            self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)                
+            time.sleep(1)
+            '''
+
+            # clicking on wiki edit is finicky ...
+            '''
+            clicked = False
+            for retry in range(0, 5):
+                try:
+                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').click()
+                    clicked = True
+                    break
+                except Exception as e:
+                    logger.error(e)
+                time.sleep(1)
+
+            if not clicked:
+                logger.error('could not click wiki edit ...')
                 import epdb; epdb.st()
+            '''
+
+            '''
+            #self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').send_keys(body)
+            commented = False
+            for cid in ['mce_0_ifr', 'comment']:
+                try:
+                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id(cid).click()
+                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id(cid).send_keys(body)
+                    commented = True
+                    break
+                except Exception as e:
+                    logger.error(e)
+
+            if not commented:
+                logger.error('could not type comment ...')
+                import epdb; epdb.st()
+            '''
+
+            # click the comment button at the top OR at the bottom ...
+            WebDriverWait(self.driver, 10).until(
+                EC.visibility_of_element_located((By.ID, 'comment-issue'))
+            )
+            new_clicked = False
+            comment_button_ids = ['comment-issue', 'footer-comment-button']
+            for cbid in comment_button_ids:
+                try:
+                    self.driver.find_element_by_id(cbid).click()
+                    new_clicked = True
+                    break
+                except Exception as e:
+                    logger.error(e)
+
+            if not new_clicked:
+                import epdb; epdb.st()
+
+            WebDriverWait(self.driver, 10).until(
+                EC.visibility_of_element_located((By.ID, 'comment-wiki-edit'))
+            )
+            WebDriverWait(self.driver, 10).until(
+                EC.visibility_of_element_located((By.TAG_NAME, 'iframe'))
+            )
+            iframes = self.driver.find_elements_by_tag_name('iframe')
+            if iframes:
+                valid_frames = [x for x in iframes if x.get_attribute('id')]
+                last_iframe = valid_frames[-1]
+                last_iframe_id = last_iframe.get_attribute('id')
+                cids = [last_iframe_id, 'comment']
+            else:
+                cids = ['comment']
+
+            commented = False
+            for cid in cids:
+                try:
+                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id(cid).click()
+                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id(cid).send_keys(body)
+                    commented = True
+                    break
+                except Exception as e:
+                    logger.error(e)
+
+            if not commented:
+                logger.error('could not type comment ...')
+                raise CommentFailedRetryException('could not type comment')
+
+            #panel = self.driver.find_element_by_class_name('detail-panel')
+            #self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)                
 
             # change the visibility ...
             if private:
                 logger.info('expand security options ...')
-                self.driver.find_element_by_class_name('security-level').find_element_by_id('commentLevel-multi-select').click()
+                try:
+                    sl = self.driver.find_element_by_class_name('security-level')
+                    sl.find_element_by_id('commentLevel-multi-select').click()
+                except Exception as e:
+                    logger.error(e)
+                    #import epdb; epdb.st()
+                    raise CommentFailedRetryException('could click security level')
+
                 logger.info('click redhat ...')
-                #self.driver.find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
-                #self.driver.find_element_by_class_name('security-level').find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
-                self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.DOWN * 6)
-                self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.ENTER)
-                time.sleep(1)
+                try:
+                    #self.driver.find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
+                    #self.driver.find_element_by_class_name('security-level').find_element_by_class_name('aui-list-item-li-red-hat-employee').click()
+                    self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.DOWN * 6)
+                    self.driver.find_element_by_class_name('aui-list-scroll').send_keys(Keys.ENTER)
+                    time.sleep(1)
+                except Exception as e:
+                    logger.error(e)
+                    #import epdb; epdb.st()
+                    raise CommentFailedRetryException('could not choose redhat')
 
             # click "add"
             try:
                 self.driver.find_element_by_id('issue-comment-add-submit').click()
             except Exception as e:
                 logger.error(str(e))
-                import epdb; epdb.st()
+                raise CommentFailedRetryException('could not click submit')
 
         #import epdb; epdb.st()
 
