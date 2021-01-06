@@ -16,3 +16,4 @@ Migrate issues from github to issues.redhat.com via selenium
 10. python map_logins.py
 11. vim login_map.json
 12. python jira_tickets.py
+13. python github_ticket_close.py

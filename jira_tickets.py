@@ -224,6 +224,7 @@ class JiraWrapper:
 
             for ji in issues:
                 idata = {
+                    'github_link': None,
                     'number': ji['key'],
                     'api_url': ji['self'],
                     'url': 'https://issues.redhat.com/projects/AA/issues/' + ji['key'],
@@ -237,7 +238,15 @@ class JiraWrapper:
                 import epdb; epdb.st()
                 '''
 
+                if 'https://github.com' in idata['description']:
+                    lines = idata['description'].split('\n')
+                    idata['github_link'] = lines[0].strip()
+
                 self.jira_issues.append(idata)
+
+            with open('jira_tickets.json', 'w') as f:
+                f.write(json.dumps(self.jira_issues, indent=2, sort_keys=True))
+            #import epdb; epdb.st()
 
         _scrape()
         if github_issue_to_find:
