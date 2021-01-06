@@ -5,7 +5,7 @@ Migrate issues from github to issues.redhat.com via selenium
 # INSTRUCTIONS
 
 1. checkout the repo
-2. download and extract the latest gecko driver to the checkout
+2. make sure firefox is installed
 3. virtualenv venv
 4. source venv/bin/activate
 5. pip install -r requirements.txt
