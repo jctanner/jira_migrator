@@ -279,6 +279,7 @@ class JiraWrapper:
         for gi in self.github_issues:
 
             logger.info(gi)
+            lockfile = gi[-1] + '.lock'
             with open(gi[-1], 'r') as f:
                 idata = json.loads(f.read())
 
@@ -287,7 +288,9 @@ class JiraWrapper:
             if 'jira' not in lnames:
                 continue
 
-            lockfile = gi[-1] + '.lock'
+            #if idata['number'] == 313:
+            #    import epdb; epdb.st()
+
             if os.path.exists(lockfile):
                 continue
 
@@ -303,8 +306,11 @@ class JiraWrapper:
             elif 'feature' in lnames or 'enhancement' in lnames:
                 itype = 'Feature'
             
-            matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
+            #matches = [x for x in self.jira_issues if idata['html_url'] in x['description']]
+            matches = [x for x in self.jira_issues if idata['html_url'] in x['description'].split('\n')[0]]
             if not matches:
+
+                #import epdb; epdb.st()
 
                 self.create_issue(
                     idata,
