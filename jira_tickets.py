@@ -14,6 +14,8 @@ import json
 import os
 import time
 
+from pprint import pprint
+
 from logzero import logger
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -24,6 +26,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from webdriver_manager.firefox import GeckoDriverManager
+
+
+WAIT_SECONDS = 60
 
 
 class CommentFailedRetryException(Exception):
@@ -145,11 +150,16 @@ class JiraWrapper:
         #profile.set_preference("devtools.jsonview.enabled", False)
         options = webdriver.FirefoxOptions()
         options.set_preference("devtools.jsonview.enabled", False)
+        options.add_argument("-private")
+
+        profile = webdriver.FirefoxProfile()
+        profile.set_preference("browser.privatebrowsing.autostart", True)
 
         # create the driver with driver manager ...
         self.driver = webdriver.Firefox(
             executable_path=GeckoDriverManager().install(),
-            options=options
+            options=options,
+            firefox_profile=profile
         )
 
         self.driver.get(self.url)
@@ -171,7 +181,7 @@ class JiraWrapper:
         '''
 
         # wait for username ...
-        WebDriverWait(self.driver, 10).until(
+        WebDriverWait(self.driver, WAIT_SECONDS).until(
             EC.visibility_of_element_located((By.ID, 'username'))
         )
 
@@ -238,9 +248,13 @@ class JiraWrapper:
                 import epdb; epdb.st()
                 '''
 
-                if 'https://github.com' in idata['description']:
+                if 'https://github.com' in idata['description'].split('\n')[0]:
                     lines = idata['description'].split('\n')
                     idata['github_link'] = lines[0].strip()
+
+                    if 'http' not in idata['github_link']:
+                        pprint(idata)
+                        import epdb; epdb.st()
 
                 self.jira_issues.append(idata)
 
@@ -396,7 +410,7 @@ class JiraWrapper:
         """
 
         # wait for the create button ...
-        WebDriverWait(self.driver, 10).until(
+        WebDriverWait(self.driver, WAIT_SECONDS).until(
             EC.visibility_of_element_located((By.ID, 'create_link'))
         )
         self.driver.find_element_by_id('create_link').click()
@@ -458,8 +472,12 @@ class JiraWrapper:
         # set the component ...
         logger.info('set components')
         cdiv = self.driver.find_element_by_id('components-multi-select')
-        for x in range(0, 10):
-            cdiv.find_element_by_tag_name('textarea').send_keys(Keys.BACKSPACE)
+        try:
+            for x in range(0, 10):
+                cdiv.find_element_by_tag_name('textarea').send_keys(Keys.BACKSPACE)
+        except Exception as e:
+            logger.error(e)
+            import epdb; epdb.st()
         if 'backend' in issue_data['url']:
             cdiv.find_element_by_tag_name('textarea').send_keys('API')
         elif 'frontend' in issue_data['url']:
@@ -636,7 +654,7 @@ class JiraWrapper:
             '''
 
             # click the comment button at the top OR at the bottom ...
-            WebDriverWait(self.driver, 10).until(
+            WebDriverWait(self.driver, WAIT_SECONDS).until(
                 EC.visibility_of_element_located((By.ID, 'comment-issue'))
             )
             new_clicked = False
@@ -652,10 +670,10 @@ class JiraWrapper:
             if not new_clicked:
                 import epdb; epdb.st()
 
-            WebDriverWait(self.driver, 10).until(
+            WebDriverWait(self.driver, WAIT_SECONDS).until(
                 EC.visibility_of_element_located((By.ID, 'comment-wiki-edit'))
             )
-            WebDriverWait(self.driver, 10).until(
+            WebDriverWait(self.driver, WAIT_SECONDS).until(
                 EC.visibility_of_element_located((By.TAG_NAME, 'iframe'))
             )
             iframes = self.driver.find_elements_by_tag_name('iframe')

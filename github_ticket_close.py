@@ -35,7 +35,13 @@ def main():
         pprint(jticket)
 
         reponame = '/'.join(jticket['github_link'].split('/')[3:5])
-        number = int(jticket['github_link'].split('/')[-1])
+
+        try:
+            number = int(jticket['github_link'].split('/')[-1])
+        except Exception as e:
+            logger.error(e)
+            import epdb; epdb.st()
+
         gurl = jticket['github_link']
         gurl = gurl.replace('github.com/', 'api.github.com/repos/')
 
