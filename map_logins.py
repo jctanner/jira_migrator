@@ -31,8 +31,6 @@ def main():
     with open(dfn, 'w') as f:
         f.write(json.dumps(lmap, indent=2))
 
-    #import epdb; epdb.st()
-
 
 if __name__ == "__main__":
     main()
