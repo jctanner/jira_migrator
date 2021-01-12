@@ -27,7 +27,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from webdriver_manager.firefox import GeckoDriverManager
 
-
+DATA_DIR = 'data'
 WAIT_SECONDS = 60
 
 
@@ -124,8 +124,8 @@ class JiraWrapper:
 
         self.github_issues = []
 
-        ddir = os.path.abspath('./data')
-        ifiles = glob.glob(f"{ddir}/RedHatInsights/tower-analytics-*/*_issue.json")
+        #ddir = os.path.abspath('./data')
+        ifiles = glob.glob(f"{DATA_DIR}/github/*/*/*_issue.json")
 
         ikeys = []
         for ifile in ifiles:

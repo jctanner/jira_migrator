@@ -9,8 +9,11 @@ import requests_cache
 import timeout_decorator
 from logzero import logger
 
-
-requests_cache.install_cache('.github_cache')
+# setup requests cache ...
+DATA_DIR = 'data/github'
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+requests_cache.install_cache(os.path.join(DATA_DIR, '.github_requests_cache'))
 
 
 class GHCrawler(object):
@@ -167,9 +170,11 @@ class GHCrawler(object):
 
 def main():
 
-    data_dir = 'data'
+    '''
+    data_dir = 'data/github'
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
+    '''
 
     # add more repos to this list ...
     repos = [
@@ -177,7 +182,7 @@ def main():
         ['RedHatInsights', 'tower-analytics-frontend']
     ] 
 
-    # the crawler is a custom api crawler with builtin rate limiting ...
+    # the crawler is a custom api crawler with builtin rate limiting and pagination...
     ghc = GHCrawler(tokens=[os.environ.get('GITHUB_TOKEN')])
 
     # iterate each repo ...
@@ -186,7 +191,7 @@ def main():
         repo = rp[1]
 
         # keep data for each repo in a separate folder
-        bd = os.path.join(data_dir, org, repo)
+        bd = os.path.join(DATA_DIR, org, repo)
         if not os.path.exists(bd):
             os.makedirs(bd)
 

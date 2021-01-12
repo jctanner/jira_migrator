@@ -8,12 +8,12 @@ import os
 def main():
 
     lmap = {}
-    dfn = 'login_map.json'
+    dfn = 'data/github/login_map.json'
     if os.path.exists(dfn):
         with open(dfn, 'r') as f:
             lmap = json.loads(f.read())
 
-    issue_fns = glob.glob('data/*/*/*_issue.json')
+    issue_fns = glob.glob('data/github/*/*/*_issue.json')
     issue_fs = sorted(issue_fns)
 
     logins = set()
