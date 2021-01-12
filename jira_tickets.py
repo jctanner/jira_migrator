@@ -258,9 +258,11 @@ class JiraWrapper:
 
                 self.jira_issues.append(idata)
 
-            with open('jira_tickets.json', 'w') as f:
+            dn = os.path.join(DATA_DIR, 'jira')
+            if not os.path.exists(dn):
+                os.makedirs(dn)
+            with open(os.path.join(dn, 'AA_jira_tickets.json'), 'w') as f:
                 f.write(json.dumps(self.jira_issues, indent=2, sort_keys=True))
-            #import epdb; epdb.st()
 
         _scrape()
         if github_issue_to_find:

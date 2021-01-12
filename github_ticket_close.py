@@ -26,7 +26,7 @@ def main():
     token = os.environ.get('GITHUB_TOKEN')
     g = Github(token)
 
-    with open('jira_tickets.json', 'r') as f:
+    with open('data/jira/AA_jira_tickets.json', 'r') as f:
         jtickets = json.loads(f.read())
 
     for jticket in jtickets:
