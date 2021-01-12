@@ -528,6 +528,7 @@ class JiraWrapper:
 
     def create_comments(self, ticket, cdata, private=False):
 
+        # fetch comments from the API to avoid mucking with button clicking
         existing = self.get_comments_for_issue(ticket['api_url'])
         joined_bodies = '\n'.join([x['body'] for x in existing])
 
@@ -538,28 +539,11 @@ class JiraWrapper:
 
         for cd in cdata:
 
-            '''
-            # expand all comments ...
-            try:
-                self.driver.find_element_by_class_name('collapsed-comments').click()
-                time.sleep(2)
-            except Exception as e:
-                logger.error(e)
-
-            # check if comment alreadyt exists ...
-            cblocks = self.driver.find_elements_by_class_name('activity-comment')
-            bodies = [x.text for x in cblocks]
-            bmatches = [x for x in bodies if cd['html_url'] in x]
-            if bmatches:
-                continue
-            '''
-
-            # skip if already added ...
+            # skip if already added (according to API data)...
             if cd['html_url'] in joined_bodies:
                 continue
 
             logger.info('adding comment ' + cd['html_url'])
-            #import epdb; epdb.st()
 
             body = cd['html_url'] + '\n'
             body +=  cd['created_at'] + ' by ' + '@' + cd['user']['login'] + '\n\n'
@@ -577,83 +561,6 @@ class JiraWrapper:
             ]
             for breaker in breakers:
                 body = body.replace('@' + breaker, breaker)
-
-
-            '''
-            logger.info('click new comment button ...')
-            #self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
-            # scroll ...
-            panel = self.driver.find_element_by_class_name('detail-panel')
-            self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)
-            time.sleep(1)
-
-            # clicking on new comment is finicky ...
-            clicked = False
-            for retry in range(0, 5):
-                try:
-                    self.driver.find_element_by_id('footer-comment-button').click()
-                    clicked = True
-                    break
-                except Exception as e:
-                    logger.error(str(e))
-                    #import epdb; epdb.st()
-                time.sleep(1)
-
-            if not clicked:
-                print('could not click "new comment" ...')
-                import epdb; epdb.st()
-            
-            # scroll ...
-            panel = self.driver.find_element_by_class_name('detail-panel')
-            self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)                
-            time.sleep(1)
-
-            logger.info('fill in commment body ...')
-            #self.wait_for_element(id='comment-wiki-edit')
-            WebDriverWait(self.driver, 10).until(
-                EC.visibility_of_element_located((By.ID, 'comment-wiki-edit'))
-            )
-
-            # scroll ...
-            panel = self.driver.find_element_by_class_name('detail-panel')
-            self.driver.execute_script("arguments[0].scrollTo(0, 100000);", panel)                
-            time.sleep(1)
-            '''
-
-            # clicking on wiki edit is finicky ...
-            '''
-            clicked = False
-            for retry in range(0, 5):
-                try:
-                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').click()
-                    clicked = True
-                    break
-                except Exception as e:
-                    logger.error(e)
-                time.sleep(1)
-
-            if not clicked:
-                logger.error('could not click wiki edit ...')
-                import epdb; epdb.st()
-            '''
-
-            '''
-            #self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id('mce_0_ifr').send_keys(body)
-            commented = False
-            for cid in ['mce_0_ifr', 'comment']:
-                try:
-                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id(cid).click()
-                    self.driver.find_element_by_id('comment-wiki-edit').find_element_by_id(cid).send_keys(body)
-                    commented = True
-                    break
-                except Exception as e:
-                    logger.error(e)
-
-            if not commented:
-                logger.error('could not type comment ...')
-                import epdb; epdb.st()
-            '''
 
             # click the comment button at the top OR at the bottom ...
             WebDriverWait(self.driver, WAIT_SECONDS).until(
