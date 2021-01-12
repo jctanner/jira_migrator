@@ -2,6 +2,20 @@
 
 Migrate issues from github to issues.redhat.com via selenium
 
+# HOW IT WORKS
+
+There are multiple scripts in this repo that are expected to be run in a specific order as outlined in the instructions.
+
+Before running these scripts, add a "jira" label to any github issue you wish to migrate.
+
+The first phase is to fetch all the github api data for the issues in a project or a set of projects. The second phase is 
+to examine the current issues in an issues.redhat.com jira project. For each issue, if the first line of the description
+relates to the url for a github issue, it is -assumed- those two are linked. For any unlinked github issues, a new jira
+ticket will be created along with all the relevant comments. The third phase is to close all the migrated github issues.
+
+The scripts are idempotent and can be run multiple times to keep data in sync if any new issues are marked for migration.
+
+
 # INSTRUCTIONS
 
 1. make sure firefox is installed
