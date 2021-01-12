@@ -171,39 +171,42 @@ def main():
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
+    # add more repos to this list ...
+    repos = [
+        ['RedHatInsights', 'tower-analytics-backend'],
+        ['RedHatInsights', 'tower-analytics-frontend']
+    ] 
+
+    # the crawler is a custom api crawler with builtin rate limiting ...
     ghc = GHCrawler(tokens=[os.environ.get('GITHUB_TOKEN')])
-    #(rr, data) = ghc._geturl('https://api.github.com/repos/RedHatInsights/tower-analytics-backend')
 
-    (irr, idata) = ghc._geturl('https://api.github.com/repos/RedHatInsights/tower-analytics-backend/issues')
-    bd = os.path.join(data_dir, 'RedHatInsights', 'tower-analytics-backend')
-    if not os.path.exists(bd):
-        os.makedirs(bd)
-    for issue in idata:
-        print(issue['number'])
-        fn = os.path.join(bd, f"{issue['number']}_issue.json")
-        with open(fn, 'w') as f:
-            f.write(json.dumps(issue))
+    # iterate each repo ...
+    for rp in repos:
+        org = rp[0]
+        repo = rp[1]
 
-        (crr, cdata) = ghc._geturl(issue['comments_url'])
-        cfn = os.path.join(bd, f"{issue['number']}_comments.json")
-        with open(cfn, 'w') as f:
-            f.write(json.dumps(cdata))
+        # keep data for each repo in a separate folder
+        bd = os.path.join(data_dir, org, repo)
+        if not os.path.exists(bd):
+            os.makedirs(bd)
 
-    (irr, idata) = ghc._geturl('https://api.github.com/repos/RedHatInsights/tower-analytics-frontend/issues')
-    bd = os.path.join(data_dir, 'RedHatInsights', 'tower-analytics-frontend')
-    if not os.path.exists(bd):
-        os.makedirs(bd)
-    for issue in idata:
-        print(issue['number'])
-        fn = os.path.join(bd, f"{issue['number']}_issue.json")
-        with open(fn, 'w') as f:
-            f.write(json.dumps(issue))
+        # construct the api url and crawl it ...
+        api_url = os.path.join('https://api.github.com/repos', org, repo, 'issues')
+        (irr, idata) = ghc._geturl(api_url)
 
-        (crr, cdata) = ghc._geturl(issue['comments_url'])
-        cfn = os.path.join(bd, f"{issue['number']}_comments.json")
-        with open(cfn, 'w') as f:
-            f.write(json.dumps(cdata))
+        # dump each issue and comments to json files ...
+        for issue in idata:
 
+            logger.info(f"{rp} / {issue['number']}")
+
+            fn = os.path.join(bd, f"{issue['number']}_issue.json")
+            with open(fn, 'w') as f:
+                f.write(json.dumps(issue))
+
+            (crr, cdata) = ghc._geturl(issue['comments_url'])
+            cfn = os.path.join(bd, f"{issue['number']}_comments.json")
+            with open(cfn, 'w') as f:
+                f.write(json.dumps(cdata))
 
 
 if __name__ == "__main__":
